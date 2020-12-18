@@ -1,26 +1,48 @@
 import { quote } from 'shlex';
 import { dirname, join } from 'upath';
-import { PLATFORM_TYPE_GITHUB } from '../../constants/platforms';
+import {
+  PLATFORM_TYPE_GITHUB,
+  PLATFORM_TYPE_GITLAB,
+  PLATFORM_TYPE_BITBUCKET,
+  PLATFORM_TYPE_BITBUCKET_SERVER,
+} from '../../constants/platforms';
 import { logger } from '../../logger';
 import { ExecOptions, exec } from '../../util/exec';
 import { BinarySource } from '../../util/exec/common';
 import { ensureCacheDir, readLocalFile, writeLocalFile } from '../../util/fs';
 import { getRepoStatus } from '../../util/git';
-import { find } from '../../util/host-rules';
+import { HostRule } from '../../types';
+import { findAll } from '../../util/host-rules';
 import { UpdateArtifact, UpdateArtifactsResult } from '../common';
 
 function getPreCommands(): string[] | null {
-  const credentials = find({
-    hostType: PLATFORM_TYPE_GITHUB,
-    url: 'https://api.github.com/',
+  const supportedPlatforms = [
+    PLATFORM_TYPE_GITHUB,
+    PLATFORM_TYPE_GITLAB,
+    PLATFORM_TYPE_BITBUCKET,
+    PLATFORM_TYPE_BITBUCKET_SERVER,
+  ];
+  let hostRules: HostRule[] = [];
+  supportedPlatforms.forEach(function (platform) {
+    hostRules.concat(
+      findAll({
+        hostType: platform,
+      })
+    );
   });
   let preCommands = null;
-  if (credentials?.token) {
-    const token = quote(credentials.token);
-    preCommands = [
-      `git config --global url.\"https://${token}@github.com/\".insteadOf \"https://github.com/\"`, // eslint-disable-line no-useless-escape
-    ];
-  }
+  hostRules.forEach(function (rule) {
+    if (rule?.token && rule?.domainName) {
+      if (preCommands == null) {
+        preCommands = [];
+      }
+      const token = quote(rule.token);
+      const domain = rule.domainName;
+      preCommands.push(
+        `git config --global url.\"https://${token}@${domain}/\".insteadOf \"https://${domain}/\"`
+      ); // eslint-disable-line no-useless-escape
+    }
+  });
   return preCommands;
 }
 
